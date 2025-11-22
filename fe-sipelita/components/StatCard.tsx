@@ -7,25 +7,30 @@ interface StatCardProps {
   borderColor?: string;
   titleColor?: string;
   valueColor?: string;
+  // Tambahan optional className jika ingin override dari luar
+  className?: string; 
 }
 
 export default function StatCard({
   title,
   value,
-  // Berikan nilai default jika props tidak dikirim
-  bgColor = 'bg-white',
-  borderColor = 'border-gray-100',
+  bgColor = 'bg-gray-50', // Default ke abu-abu muda sesuai desain rincian skor
+  borderColor = 'border-transparent',
   titleColor = 'text-gray-500',
   valueColor = 'text-gray-800',
+  className = '',
 }: StatCardProps) {
   return (
-    // PERBAIKAN: Tambahkan h-full (tinggi 100%) dan flex flex-col
     <div
-      className={`${bgColor} p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow border ${borderColor} 
-      h-full flex flex-col justify-center transition-transform hover:scale-105`}
+      className={`
+        ${bgColor} ${borderColor} ${className}
+        border rounded-lg p-4 text-center 
+        h-full flex flex-col justify-center items-center
+        transition-transform hover:scale-105 duration-200
+      `}
     >
-      <h3 className={`text-sm font-medium mb-1 ${titleColor}`}>{title}</h3>
-      <div className={`text-3xl font-extrabold ${valueColor}`}>{value}</div>
+      <div className={`text-xs mb-1 ${titleColor}`}>{title}</div>
+      <div className={`text-lg font-bold ${valueColor}`}>{value}</div>
     </div>
   );
 }

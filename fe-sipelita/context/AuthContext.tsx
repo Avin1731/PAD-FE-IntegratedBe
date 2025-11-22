@@ -1,22 +1,15 @@
-// src/context/AuthContext.tsx
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from '../lib/axios';
-import { isAxiosError } from 'axios';
 
 // --- TIPE DATA UTAMA ---
-
-// Tipe Wilayah
 interface Province { id: string; name: string; }
 interface Regency { id: string; name: string; }
-
-// Tipe Role dan Jenis DLH
 interface Role { id: number; name: string; }
-interface JenisDlh { id: number; name: string; } // <-- Tipe ini dibutuhkan
+interface JenisDlh { id: number; name: string; }
 
-// Tipe User
 export interface User {
   id: number;
   name: string;
@@ -24,7 +17,7 @@ export interface User {
   role_id: number;
   jenis_dlh_id?: number;
   role: Role;
-  jenis_dlh?: JenisDlh; // (Relasi ini bisa jadi null dari backend)
+  jenis_dlh?: JenisDlh;
   nomor_telepon?: string;
   province_id?: string;
   regency_id?: string;
@@ -33,7 +26,6 @@ export interface User {
   pesisir?: string;
 }
 
-// Tipe Data untuk Login
 interface LoginCredentials {
   email: string;
   password: string;
@@ -41,7 +33,6 @@ interface LoginCredentials {
   jenis_dlh_id: string | null;
 }
 
-// Tipe Data untuk Register
 interface RegisterData {
   name: string;
   email: string;
@@ -55,22 +46,36 @@ interface RegisterData {
   pesisir: string;
 }
 
-// Tipe Context (SATU deklarasi)
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   provinces: Province[];
   regencies: Regency[];
-  jenisDlhs: JenisDlh[]; // <-- 1. TAMBAHKAN JENIS DLH DI SINI
+  jenisDlhs: JenisDlh[];
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
 }
 
-// 2. Context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 3. Provider
+// Mock data fallback
+const MOCK_PROVINCES: Province[] = [
+  { id: '1', name: 'Jawa Barat' },
+  { id: '2', name: 'Jawa Tengah' },
+];
+
+const MOCK_REGENCIES: Regency[] = [
+  { id: '1', name: 'Kota Bandung' },
+  { id: '2', name: 'Kota Semarang' },
+];
+
+const MOCK_JENIS_DLHS: JenisDlh[] = [
+  { id: 1, name: 'Kabupaten/Kota Kecil' },
+  { id: 2, name: 'Kabupaten/Kota Sedang' },
+  { id: 3, name: 'Kabupaten/Kota Besar' },
+];
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [regencies, setRegencies] = useState<Regency[]>([]);
-  const [jenisDlhs, setJenisDlhs] = useState<JenisDlh[]>([]); // <-- 2. TAMBAHKAN STATE-NYA
+  const [jenisDlhs, setJenisDlhs] = useState<JenisDlh[]>([]);
 
   const fetchUser = async () => {
     try {
@@ -86,13 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(res.data);
       return res.data;
     } catch (error: unknown) {
-      if (isAxiosError(error)) {
-        if (error.response?.status !== 401) {
-          console.error("Error fetching user:", error.message);
-        }
-      } else {
-        console.error("An unexpected error occurred:", error);
-      }
+      console.error("Error fetching user:", error);
       setUser(null);
       return null;
     }
@@ -100,26 +99,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const initAuth = async () => {
-      await fetchUser(); // Cek login
+      await fetchUser();
 
-      // Fetch semua data pendukung secara paralel
-      const fetchProvinces = axios.get('/api/provinces').then(res => setProvinces(res.data));
-      const fetchRegencies = axios.get('/api/regencies/all').then(res => setRegencies(res.data));
-      // 3. TAMBAHKAN FETCH JENIS DLH
-      const fetchJenisDlhs = axios.get('/api/jenis-dlh').then(res => setJenisDlhs(res.data));
+      // Gunakan Promise.allSettled untuk handle error individual
+      const [provincesResult, regenciesResult, jenisDlhsResult] = await Promise.allSettled([
+        axios.get('/api/provinces').then(res => setProvinces(res.data)),
+        axios.get('/api/regencies/all').then(res => setRegencies(res.data)),
+        axios.get('/api/jenis-dlh').then(res => setJenisDlhs(res.data)),
+      ]);
 
-      try {
-        // Tunggu semua selesai
-        await Promise.all([fetchProvinces, fetchRegencies, fetchJenisDlhs]);
-      } catch (err) {
-        console.error("Error fetching initial data:", err);
+      // Handle fallback untuk setiap request yang gagal
+      if (provincesResult.status === 'rejected') {
+        console.warn('Failed to fetch provinces, using mock data');
+        setProvinces(MOCK_PROVINCES);
+      }
+      if (regenciesResult.status === 'rejected') {
+        console.warn('Failed to fetch regencies, using mock data');
+        setRegencies(MOCK_REGENCIES);
+      }
+      if (jenisDlhsResult.status === 'rejected') {
+        console.warn('Failed to fetch jenis DLH, using mock data');
+        setJenisDlhs(MOCK_JENIS_DLHS);
       }
 
-      setLoading(false); // Selesai loading
+      setLoading(false);
     };
 
     initAuth();
-  }, []); // '[]' = Jalankan sekali
+  }, []);
 
   const register = async (data: RegisterData) => {
     try {
@@ -175,7 +182,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       router.push('/');
     } catch (error) {
       console.error("Logout failed:", error);
-      if (isAxiosError(error)) console.error("Detail error logout:", error.response?.data);
     }
   };
 
@@ -187,7 +193,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  // 4. KIRIM 'jenisDlhs' KE PROVIDER
   return (
     <AuthContext.Provider value={{ user, loading, provinces, regencies, jenisDlhs, login, register, logout }}> 
       {children}
@@ -195,7 +200,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// 4. Hook kustom
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

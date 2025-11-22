@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { FiFileText, FiAward, FiSearch } from 'react-icons/fi';
 import axios from '@/lib/axios';
 import UniversalModal from '@/components/UniversalModal';
-// Import Komponen Tabel dan Tipe Datanya
-import PenerimaanTable, { SlhdData, IklhData, TableItem } from '@/components/PenerimaanTable';
+import PenerimaanTable, { SlhdData, IklhData, TableItem } from '@/components/penerimaan/PenerimaanTable';
 
 // --- INTERFACES ---
 interface Province {
@@ -26,6 +25,69 @@ const INITIAL_MODAL_CONFIG = {
   confirmLabel: 'Ya',
   cancelLabel: 'Batal',
 };
+
+// Mock data fallback
+const MOCK_PROVINCES: Province[] = [
+  { id: '1', name: 'Jawa Barat' },
+  { id: '2', name: 'Jawa Tengah' },
+  { id: '3', name: 'Jawa Timur' },
+  { id: '4', name: 'Bali' },
+  { id: '5', name: 'Sumatera Utara' },
+];
+
+const MOCK_SLHD_DATA: SlhdData[] = [
+  { 
+    id: 1, 
+    kabkota: 'Kota Bandung', 
+    provinsi: 'Jawa Barat', 
+    pembagian_daerah: 'Kabupaten/Kota Besar', 
+    tipologi: 'Daratan',
+    buku_1: 'SLHD_Bandung_Buku1.pdf',
+    buku_2: 'SLHD_Bandung_Buku2.pdf',
+    tabel_utama: 'SLHD_Bandung_Tabel.xlsx'
+  },
+  { 
+    id: 2, 
+    kabkota: 'Kota Semarang', 
+    provinsi: 'Jawa Tengah', 
+    pembagian_daerah: 'Kabupaten/Kota Sedang', 
+    tipologi: 'Pesisir',
+    buku_1: 'SLHD_Semarang_Buku1.pdf',
+    buku_2: null,
+    tabel_utama: 'SLHD_Semarang_Tabel.xlsx'
+  },
+];
+
+const MOCK_IKLH_DATA: IklhData[] = [
+  { 
+    id: 1, 
+    kabkota: 'Kota Bandung', 
+    provinsi: 'Jawa Barat', 
+    jenis_dlh: 'Kabupaten/Kota Besar', 
+    tipologi: 'Daratan',
+    ika: 85.5,
+    iku: 78.2,
+    ikl: 82.1,
+    ik_pesisir: 0,
+    ik_kehati: 88.3,
+    total_iklh: 83.25,
+    verifikasi: false
+  },
+  { 
+    id: 2, 
+    kabkota: 'Kota Semarang', 
+    provinsi: 'Jawa Tengah', 
+    jenis_dlh: 'Kabupaten/Kota Sedang', 
+    tipologi: 'Pesisir',
+    ika: 78.5,
+    iku: 72.3,
+    ikl: 75.8,
+    ik_pesisir: 80.2,
+    ik_kehati: 77.6,
+    total_iklh: 76.88,
+    verifikasi: false
+  },
+];
 
 export default function PenerimaanKabKotaPage() {
   const [activeTab, setActiveTab] = useState<'SLHD' | 'IKLH'>('SLHD');
@@ -48,17 +110,46 @@ export default function PenerimaanKabKotaPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [provRes, slhdRes, iklhRes] = await Promise.all([
+        
+        // Gunakan Promise.allSettled untuk handle error individual
+        const [provRes, slhdRes, iklhRes] = await Promise.allSettled([
           axios.get('/api/provinces'),
           axios.get('/api/penerimaan/kab-kota/slhd'),
           axios.get('/api/penerimaan/kab-kota/iklh'),
         ]);
 
-        setProvinces(provRes.data);
-        setSlhdData(Array.isArray(slhdRes.data) ? slhdRes.data : slhdRes.data.data);
-        setIklhData(Array.isArray(iklhRes.data) ? iklhRes.data : iklhRes.data.data);
+        // Handle provinces
+        if (provRes.status === 'fulfilled') {
+          setProvinces(provRes.value.data || []);
+        } else {
+          console.warn('Failed to fetch provinces, using mock data');
+          setProvinces(MOCK_PROVINCES);
+        }
+
+        // Handle SLHD data
+        if (slhdRes.status === 'fulfilled') {
+          const data = slhdRes.value.data;
+          setSlhdData(Array.isArray(data) ? data : data?.data || []);
+        } else {
+          console.warn('Failed to fetch SLHD data, using mock data');
+          setSlhdData(MOCK_SLHD_DATA);
+        }
+
+        // Handle IKLH data
+        if (iklhRes.status === 'fulfilled') {
+          const data = iklhRes.value.data;
+          setIklhData(Array.isArray(data) ? data : data?.data || []);
+        } else {
+          console.warn('Failed to fetch IKLH data, using mock data');
+          setIklhData(MOCK_IKLH_DATA);
+        }
+
       } catch (error) {
         console.error("Gagal memuat data:", error);
+        // Fallback to mock data
+        setProvinces(MOCK_PROVINCES);
+        setSlhdData(MOCK_SLHD_DATA);
+        setIklhData(MOCK_IKLH_DATA);
       } finally {
         setLoading(false);
       }
@@ -171,7 +262,17 @@ export default function PenerimaanKabKotaPage() {
 
   return (
     <div className="space-y-8 p-8">
+      {/* HEADER DENGAN BREADCRUMB YANG DIPERBAIKI */}
       <div>
+        {/* Breadcrumb yang diperbaiki */}
+        <div className="flex items-center text-sm text-green-600 mb-2">
+          <span className="cursor-pointer hover:underline">Dashboard</span>
+          <span className="mx-2">&gt;</span>
+          <span className="cursor-pointer hover:underline">Penerimaan Data</span>
+          <span className="mx-2">&gt;</span>
+          <span className="font-semibold">Kabupaten/Kota</span>
+        </div>
+        
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Penerimaan {activeTab === 'SLHD' ? 'SLHD' : 'IKLH'} Kab/Kota
         </h1>
@@ -277,6 +378,7 @@ export default function PenerimaanKabKotaPage() {
         data={filteredTableData}
         onVerify={handleVerificationClick}
         isProcessing={isProcessing}
+        currentPath='kab-kota'
       />
 
       <UniversalModal 
