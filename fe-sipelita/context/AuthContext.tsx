@@ -97,12 +97,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(res.data);
       return res.data;
     } catch (error: unknown) {
-      // Jika error (misal 401 Unauthorized), kita anggap user sebagai Tamu (Guest).
-      // JANGAN melakukan auto-login Mock User di sini agar header Admin tidak bocor.
       if (isAxiosError(error) && error.response?.status !== 401) {
         console.error("Error fetching user:", error.message);
       }
-      
       setUser(null);
       return null;
     }
@@ -111,20 +108,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // 1. Inisialisasi CSRF Protection
-        await axios.get('/sanctum/csrf-cookie');
-        
-        // 2. Cek status login pengguna saat ini
+        // 1. Cek status login pengguna saat ini
         await fetchUser();
 
-        // 3. Ambil data dropdown (Wilayah & Jenis DLH) secara paralel
+        // 2. Ambil data dropdown (Wilayah & Jenis DLH) secara paralel
         const [provincesResult, regenciesResult, jenisDlhsResult] = await Promise.allSettled([
           axios.get<Province[]>('/api/wilayah/provinces').then(res => setProvinces(res.data)),
           axios.get<Regency[]>('/api/wilayah/regencies/all').then(res => setRegencies(res.data)),
           axios.get<JenisDlh[]>('/api/jenis-dlh').then(res => setJenisDlhs(res.data)),
         ]);
 
-        // 4. Gunakan Mock Data HANYA untuk dropdown jika API gagal (Mode Development)
+        // 3. Gunakan Mock Data HANYA untuk dropdown jika API gagal (Mode Development)
         if (process.env.NODE_ENV === 'development') {
           if (provincesResult.status === 'rejected') {
             console.warn('Using Mock Provinces');
@@ -152,16 +146,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const register = async (data: RegisterData): Promise<void> => {
     try {
-      await axios.get('/sanctum/csrf-cookie');
-      await axios.post('/api/auth/register', data);
+      const response = await axios.post('/api/auth/register', data);
       
       // Login otomatis setelah register berhasil
-      await login({ 
-        email: data.email, 
-        password: data.password,
-        role_id: String(data.role_id), 
-        jenis_dlh_id: String(data.jenis_dlh_id) 
-      });
+      const token = response.data.token;
+      localStorage.setItem('auth_token', token);
+      setUser(response.data.user);
+      
+      if (response.data.user?.role?.name) {
+        const roleName = response.data.user.role.name.toLowerCase();
+        if (roleName === 'admin') router.push('/admin-dashboard');
+        else if (roleName === 'pusdatin') router.push('/pusdatin-dashboard');
+        else if (roleName === 'dlh') router.push('/dlh-dashboard');
+        else router.push('/');
+      }
     } catch (error: unknown) {
       console.error("Register failed:", error);
       throw error;
@@ -170,8 +168,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     try {
-      await axios.get('/sanctum/csrf-cookie');
-      
       const payload = {
         email: credentials.email,
         password: credentials.password,
@@ -179,21 +175,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         jenis_dlh_id: credentials.jenis_dlh_id ? Number(credentials.jenis_dlh_id) : null,
       };
       
-      await axios.post('/api/auth/login', payload);
-
-      // Ambil data user terbaru dari server untuk memastikan role valid
-      const loggedInUser = await fetchUser();
+      const response = await axios.post('/api/auth/login', payload);
       
-      if (loggedInUser && loggedInUser.role && loggedInUser.role.name) {
-        const roleName = loggedInUser.role.name.toLowerCase();
+      // SIMPAN TOKEN & USER DATA
+      const token = response.data.token;
+      localStorage.setItem('auth_token', token);
+      setUser(response.data.user);
+
+      if (response.data.user?.role?.name) {
+        const roleName = response.data.user.role.name.toLowerCase();
         if (roleName === 'admin') router.push('/admin-dashboard');
         else if (roleName === 'pusdatin') router.push('/pusdatin-dashboard');
         else if (roleName === 'dlh') router.push('/dlh-dashboard');
         else router.push('/');
-      } else {
-        console.error("Login API sukses, tetapi gagal mengambil profil user.");
-        await logout(); // Logout paksa untuk keamanan jika data korup
-        throw new Error("Gagal mengambil data profil pengguna.");
       }
     } catch (error: unknown) {
       console.error("Login failed:", error);
@@ -203,12 +197,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async (): Promise<void> => {
     try {
-      await axios.get('/sanctum/csrf-cookie');
       await axios.post('/api/auth/logout');
     } catch (error: unknown) {
       console.error("Logout error (ignoring):", error);
     } finally {
-      // Selalu bersihkan state user di client side, apa pun hasil API-nya
+      localStorage.removeItem('auth_token');
       setUser(null);
       router.push('/');
     }
