@@ -1,11 +1,4 @@
 'use client';
-
-import { useState } from 'react';
-
-// Import dari folder yang sama (bukan dari document)
-import DocumentDetailModal from '../document/DocumentDetailModal';
-import MainTableDetailModal from '../document/MainTableDetailModal';
-
 export interface SlhdData {
   id: number;
   provinsi: string;
@@ -42,33 +35,21 @@ interface PenerimaanTableProps {
   currentPath: 'kab-kota' | 'provinsi';
 }
 
-// Data untuk tabel utama
-const MAIN_TABLE_INDICATORS = [
-  { indikator: 'Keanekaragaman Hayati', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Kualitas Air', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Laut, Pesisir, dan Pantai', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Kualitas Udara', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Lahan dan Hutan', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Pengelolaan Sampah dan Limbah', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Perubahan Iklim', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Risiko Bencana', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-  { indikator: 'Dokumen Non Matra', tanggalUpload: '23 Oktober 2025', hasDetail: true },
-];
-
 export default function PenerimaanTable({ 
   activeTab, 
   data, 
   onVerify, 
   isProcessing 
 }: PenerimaanTableProps) {
-  const [selectedDocument, setSelectedDocument] = useState<{
-    type: 'buku1' | 'buku2';
-    item: SlhdData;
-  } | null>(null);
+  // HAPUS: selectedDocument dan selectedMainTable karena tidak dipakai
+  // const [selectedDocument, setSelectedDocument] = useState<{
+  //   type: 'buku1' | 'buku2';
+  //   item: SlhdData;
+  // } | null>(null);
 
-  const [selectedMainTable, setSelectedMainTable] = useState<{
-    item: SlhdData;
-  } | null>(null);
+  // const [selectedMainTable, setSelectedMainTable] = useState<{
+  //   item: SlhdData;
+  // } | null>(null);
   
   const checkIsVerified = (val: boolean | number): boolean => {
     return val === true || val === 1;
@@ -79,31 +60,18 @@ export default function PenerimaanTable({
     return title || undefined;
   };
 
-  // Handler untuk membuka modal dokumen
+  // Handler untuk membuka modal dokumen - SEMENTARA DISABLE
   const handleViewDocument = (item: SlhdData, documentType: 'buku1' | 'buku2') => {
-    setSelectedDocument({
-      type: documentType,
-      item: item
-    });
+    // SEMENTARA: Hanya console log, tidak buka modal
+    console.log('View document:', documentType, item.kabkota);
+    // nanti bisa diaktifkan kembali ketika modal sudah siap
   };
 
-  // Handler untuk membuka modal tabel utama
+  // Handler untuk membuka modal tabel utama - SEMENTARA DISABLE
   const handleViewMainTable = (item: SlhdData) => {
-    setSelectedMainTable({
-      item: item
-    });
-  };
-
-  // Handler untuk menerima dokumen
-  const handleAcceptDocument = () => {
-    console.log('Document accepted:', selectedDocument);
-    setSelectedDocument(null);
-  };
-
-  // Handler untuk menolak dokumen
-  const handleRejectDocument = () => {
-    console.log('Document rejected:', selectedDocument);
-    setSelectedDocument(null);
+    // SEMENTARA: Hanya console log, tidak buka modal
+    console.log('View main table:', item.kabkota);
+    // nanti bisa diaktifkan kembali ketika modal sudah siap
   };
 
   return (
@@ -299,39 +267,6 @@ export default function PenerimaanTable({
           </table>
         </div>
       </div>
-
-      {/* Modal untuk dokumen Buku 1 & 2 */}
-      {selectedDocument && (
-        <DocumentDetailModal
-          isOpen={!!selectedDocument}
-          onClose={() => setSelectedDocument(null)}
-          documentType={selectedDocument.type}
-          regionName={selectedDocument.item.kabkota}
-          data={{
-            namaDaerah: selectedDocument.item.kabkota,
-            jenisDLH: selectedDocument.item.pembagian_daerah,
-            jenisDokumen: selectedDocument.type === 'buku1' ? 'SLHD Buku I (RE)' : 'SLHD Buku II',
-            tanggalUpload: '16 Oktober 2025',
-            namaFile: selectedDocument.type === 'buku1' ? `Buku_L_${selectedDocument.item.kabkota.replace(/\s+/g, '')}_2025` : `Buku_IL_${selectedDocument.item.kabkota.replace(/\s+/g, '')}_2025`,
-            ukuranFile: selectedDocument.type === 'buku1' ? '5.5 MB' : '6.5 MB',
-            formatFile: 'PDF',
-            status: 'Belum diverifikasi'
-          }}
-          onAccept={handleAcceptDocument}
-          onReject={handleRejectDocument}
-        />
-      )}
-
-      {/* Modal untuk tabel utama */}
-      {selectedMainTable && (
-        <MainTableDetailModal
-          isOpen={!!selectedMainTable}
-          onClose={() => setSelectedMainTable(null)}
-          regionName={selectedMainTable.item.kabkota}
-          tipologi={selectedMainTable.item.tipologi.toLowerCase() as 'pesisir' | 'daratan'}
-          data={MAIN_TABLE_INDICATORS}
-        />
-      )}
     </>
   );
 }
