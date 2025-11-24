@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import DocumentDetailModal from '@/components/document/DocumentDetailModal';
-import MainTableDetailModal from '@/components/document/MainTableDetailModal';
+
+// Import dari folder yang sama (bukan dari document)
+import DocumentDetailModal from '../document/DocumentDetailModal';
+import MainTableDetailModal from '../document/MainTableDetailModal';
 
 export interface SlhdData {
   id: number;
