@@ -1,73 +1,47 @@
-// src/components/UnderConstructionModal.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
-import { WrenchScrewdriverIcon } from "@heroicons/react/24/outline";
+import React, { useState } from 'react';
 
-interface Props {
+interface UnderConstructionModalProps {
   title: string;
   message: string;
 }
 
-export default function UnderConstructionModal({ title, message }: Props) {
-  const router = useRouter();
+export default function UnderConstructionModal({ title, message }: UnderConstructionModalProps) {
+  const [isOpen, setIsOpen] = useState(true);
 
-  const handleClose = () => {
-    router.back(); // ⬅ kembali ke halaman sebelumnya
-  };
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={handleClose}
-      />
-
-      {/* Modal */}
-      <div className="relative bg-white p-8 rounded-xl shadow-xl w-full max-w-md text-center border border-gray-300 animate-scale-in">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">{title}</h1>
-
-        <div className="flex justify-center mb-4">
-          <WrenchScrewdriverIcon
-            className="w-16 h-16 text-[#00A86B] animate-bounce-vibrate"
-          />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden transform transition-all scale-100">
+        
+        {/* Header dengan Ikon */}
+        <div className="bg-yellow-50 p-6 text-center border-b border-yellow-100">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-yellow-100 mb-4">
+            <svg className="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900">{title}</h3>
         </div>
 
-        <p className="text-gray-600 mb-6">{message}</p>
-
-        <button
-          type="button"
-          onClick={handleClose}
-          className="block w-full bg-[#00A86B] text-white font-bold py-3 px-4 rounded-lg hover:brightness-90 transition duration-300 shadow-sm"
-        >
-          Kembali
-        </button>
+        {/* Body Content */}
+        <div className="p-6 text-center">
+          <p className="text-gray-600 mb-6 leading-relaxed">
+            {message}
+          </p>
+          
+          <div className="flex justify-center">
+            <button
+              onClick={() => setIsOpen(false)}
+              className="px-6 py-2.5 bg-green-600 text-white font-medium text-sm rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors w-full sm:w-auto"
+            >
+              Mengerti
+            </button>
+          </div>
+        </div>
       </div>
-
-      {/* Animations */}
-      <style>
-        {`
-          @keyframes scale-in {
-            0% { transform: scale(0.85); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-          .animate-scale-in {
-            animation: scale-in .25s ease-out;
-          }
-
-          @keyframes vibrate {
-            0%, 100% { transform: translate(0, 0); }
-            20% { transform: translate(-2px, 1px); }
-            40% { transform: translate(2px, -1px); }
-            60% { transform: translate(-1px, -2px); }
-            80% { transform: translate(1px, 2px); }
-          }
-          .animate-bounce-vibrate {
-            animation: vibrate 0.2s infinite;
-          }
-        `}
-      </style>
     </div>
   );
 }
