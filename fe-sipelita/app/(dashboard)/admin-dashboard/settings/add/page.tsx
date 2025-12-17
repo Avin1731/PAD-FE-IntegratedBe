@@ -27,13 +27,13 @@ const INITIAL_MODAL_CONFIG = {
 };
 
 // Helper Log
-const logActivity = async (action: string, description: string) => {
-  try {
-    await axios.post('/api/logs', { action, description, role: 'admin' });
-  } catch (error) {
-    console.error('Gagal mencatat log:', error);
-  }
-};
+// const logActivity = async (action: string, description: string) => {
+//   try {
+//     await axios.post('/api/logs', { action, description, role: 'admin' });
+//   } catch (error) {
+//     console.error('Gagal mencatat log:', error);
+//   }
+// };
 
 export default function AddPusdatinPage() {
   const router = useRouter();
@@ -80,10 +80,10 @@ export default function AddPusdatinPage() {
         status: 'aktif', 
       };
 
-      await axios.post('/api/admin/pusdatin', payload);
+      await axios.post('/api/admin/users/pusdatin', payload);
       
       // --- LOGGING ---
-      logActivity('Membuat Akun', `Membuat akun Pusdatin baru: ${formData.name}`);
+      // logActivity('Membuat Akun', `Membuat akun Pusdatin baru: ${formData.name}`);
 
       setModalConfig({
         title: 'Berhasil',

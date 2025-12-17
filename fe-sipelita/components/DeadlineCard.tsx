@@ -2,21 +2,18 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { FaCalendarAlt } from 'react-icons/fa';
-import DatePicker, { registerLocale } from 'react-datepicker';
-import { id } from 'date-fns/locale/id';
+import DatePicker from 'react-datepicker';
 
 // Import CSS untuk datepicker
 import 'react-datepicker/dist/react-datepicker.css';
-
-// Daftarkan locale Bahasa Indonesia
-registerLocale('id', id);
 
 interface DeadlineCardProps {
   title: string;
   startDate: string; 
   endDate: string;
   onSave: (start: string, end: string) => void;
-  disabled?: boolean; // <-- 1. TAMBAHKAN PROP INI
+  disabled?: boolean;
+  hideStartDate?: boolean; // Untuk menyembunyikan input tanggal mulai
 }
 
 // --- FUNGSI PARSE DATE ---
@@ -70,7 +67,8 @@ export default function DeadlineCard({
   startDate,
   endDate,
   onSave,
-  disabled = false, // <-- 2. AMBIL PROP DI SINI
+  disabled = false,
+  hideStartDate = false,
 }: DeadlineCardProps) {
   // State untuk DatePicker (kalender)
   const [localStart, setLocalStart] = useState<Date | null>(parseDate(startDate));
@@ -159,43 +157,43 @@ export default function DeadlineCard({
   };
 
   return (
-    // 4. Tambahkan styling disabled di card utama
     <div className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}>
         {/* Judul Card */}
         <h3 className="text-base font-semibold text-gray-800 mb-3">{title}</h3>
         
-        {/* Input Tanggal Mulai */}
-        <div className="mb-3">
-          <label className="block text-sm text-gray-700 mb-0.5">Tanggal Mulai</label>
-          <div className="relative">
-            <input
-              type="text"
-              value={inputStart}
-              onChange={handleStartChange}
-              disabled={disabled} // <-- 5. Terapkan disabled
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#00A86B] focus:border-transparent placeholder-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed" // <-- Tambah style disabled
-              placeholder="DD/MM/YYYY"
-              maxLength={10}
-            />
-            <FaCalendarAlt
-              className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[#00A86B] text-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`} // <-- Tambah style disabled
-              onClick={handleIconClickStart}
-            />
-            <DatePicker
-              ref={datePickerStartRef}
-              selected={localStart}
-              onChange={(date) => {
-                setLocalStart(date);
-                setInputStart(formatDate(date));
-              }}
-              dateFormat="dd/MM/yyyy"
-              locale="id"
-              showPopperArrow={false}
-              className="hidden"
-              disabled={disabled} // <-- 5. Terapkan disabled
-            />
+        {/* Input Tanggal Mulai - Conditional render */}
+        {!hideStartDate && (
+          <div className="mb-3">
+            <label className="block text-sm text-gray-700 mb-0.5">Tanggal Mulai</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={inputStart}
+                onChange={handleStartChange}
+                disabled={disabled}
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#00A86B] focus:border-transparent placeholder-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                placeholder="DD/MM/YYYY"
+                maxLength={10}
+              />
+              <FaCalendarAlt
+                className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[#00A86B] text-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                onClick={handleIconClickStart}
+              />
+              <DatePicker
+                ref={datePickerStartRef}
+                selected={localStart}
+                onChange={(date) => {
+                  setLocalStart(date);
+                  setInputStart(formatDate(date));
+                }}
+                dateFormat="dd/MM/yyyy"
+                showPopperArrow={false}
+                className="hidden"
+                disabled={disabled}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Input Tanggal Selesai */}
         <div className="mb-4">
@@ -222,10 +220,9 @@ export default function DeadlineCard({
                 setInputEnd(formatDate(date));
               }}
               dateFormat="dd/MM/yyyy"
-              locale="id"
               showPopperArrow={false}
               className="hidden"
-              disabled={disabled} // <-- 5. Terapkan disabled
+              disabled={disabled}
             />
           </div>
         </div>

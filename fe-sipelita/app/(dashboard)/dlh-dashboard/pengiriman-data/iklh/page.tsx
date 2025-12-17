@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import axios from '@/lib/axios';
 
 // --- KOMPONEN INPUT SKOR ---
 interface ScoreInputProps {
@@ -33,7 +35,15 @@ const ScoreInput = ({ label, value, onChange }: ScoreInputProps) => {
 
 // --- HALAMAN UTAMA ---
 export default function UnggahNilaiIKLHPage() {
+  const { user } = useAuth();
   const [tahun, setTahun] = useState('2025');
+  const [hasPesisir, setHasPesisir] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [statusIklh, setStatusIklh] = useState<'draft' | 'finalized' | 'approved' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   // State untuk nilai input
   const [scores, setScores] = useState({
@@ -44,12 +54,125 @@ export default function UnggahNilaiIKLHPage() {
     kehati: '',
   });
 
+  // Fetch dinas info dan data IKLH yang sudah ada
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get('/api/dinas/dashboard');
+        setHasPesisir(response.data.dinas?.has_pesisir || false);
+
+        // Ambil status dokumen IKLH
+        const statusResponse = await axios.get('/api/dinas/upload/status-dokumen');
+        const dokumenList = statusResponse.data.data || [];
+        const iklhDoc = dokumenList.find((doc: any) => doc.nama === 'iklh');
+        
+        if (iklhDoc?.uploaded && iklhDoc?.data) {
+          // Populate existing data
+          setScores({
+            air: iklhDoc.data.indeks_kualitas_air?.toString() || '',
+            udara: iklhDoc.data.indeks_kualitas_udara?.toString() || '',
+            lahan: iklhDoc.data.indeks_kualitas_lahan?.toString() || '',
+            laut: iklhDoc.data.indeks_kualitas_pesisir_laut?.toString() || '',
+            kehati: iklhDoc.data.indeks_kualitas_kehati?.toString() || '',
+          });
+          setStatusIklh(iklhDoc.status);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        setError('Gagal memuat data. Silakan refresh halaman.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
+
   const handleInputChange = (field: keyof typeof scores, value: string) => {
     setScores((prev) => ({ ...prev, [field]: value }));
+    setError(null);
+    setSuccessMessage(null);
   };
 
-  // Hitung rata-rata simulasi (opsional)
-  const uploadedScore = 80; 
+  // Hitung rata-rata IKLH (relatif terhadap has_pesisir)
+  const calculateAverage = () => {
+    const values = [
+      parseFloat(scores.air) || 0,
+      parseFloat(scores.udara) || 0,
+      parseFloat(scores.lahan) || 0,
+      parseFloat(scores.kehati) || 0,
+    ];
+    
+    // Tambahkan pesisir jika has_pesisir
+    if (hasPesisir && scores.laut) {
+      values.push(parseFloat(scores.laut) || 0);
+    }
+    
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    return values.length > 0 ? (sum / values.length).toFixed(2) : '0.00';
+  };
+
+  const handleSave = async () => {
+    setError(null);
+    setSuccessMessage(null);
+    
+    // Validasi
+    if (!scores.air || !scores.udara || !scores.lahan || !scores.kehati) {
+      setError('Semua field wajib diisi.');
+      return;
+    }
+    
+    if (hasPesisir && !scores.laut) {
+      setError('Indeks Kualitas Pesisir Laut wajib diisi untuk daerah pesisir.');
+      return;
+    }
+    
+    setIsSaving(true);
+    
+    try {
+      const payload: any = {
+        indeks_kualitas_air: parseFloat(scores.air),
+        indeks_kualitas_udara: parseFloat(scores.udara),
+        indeks_kualitas_lahan: parseFloat(scores.lahan),
+        indeks_kualitas_kehati: parseFloat(scores.kehati),
+      };
+      
+      if (hasPesisir) {
+        payload.indeks_kualitas_pesisir_laut = parseFloat(scores.laut);
+      }
+      
+      const response = await axios.post('/api/dinas/upload/iklh', payload);
+      setSuccessMessage(response.data.message || 'Data berhasil disimpan!');
+      setStatusIklh('draft');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Gagal menyimpan data. Silakan coba lagi.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFinalize = async () => {
+    if (!statusIklh || statusIklh === 'finalized' || statusIklh === 'approved') {
+      setError('Data sudah difinalisasi atau belum disimpan.');
+      return;
+    }
+    
+    setError(null);
+    setSuccessMessage(null);
+    setIsFinalizing(true);
+    
+    try {
+      const response = await axios.patch('/api/dinas/upload/finalize/iklh');
+      setSuccessMessage(response.data.message || 'Data berhasil difinalisasi!');
+      setStatusIklh('finalized');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Gagal finalisasi data. Silakan coba lagi.');
+    } finally {
+      setIsFinalizing(false);
+    }
+  }; 
 
   return (
     <div className="max-w-5xl mx-auto py-6 px-4">
@@ -67,26 +190,22 @@ export default function UnggahNilaiIKLHPage() {
         </div>
 
         <div className="flex items-center gap-3 mt-4 md:mt-0">
-          <div className="flex flex-col">
-            <label className="text-xs font-bold text-gray-700 mb-1">Tahun</label>
-            <select
-              value={tahun}
-              onChange={(e) => setTahun(e.target.value)}
-              className="border border-green-500 text-gray-700 rounded-md py-2 px-4 w-32 focus:outline-none focus:ring-1 focus:ring-green-500"
-            >
-              <option value="2025">2025</option>
-              <option value="2024">2024</option>
-            </select>
-          </div>
-          <div className="flex flex-col justify-end h-full">
-             {/* Spacer label agar sejajar tombol */}
-             <div className="h-5"></div>
-             <button className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-md transition-colors">
-                Filter
-             </button>
-          </div>
+         
         </div>
       </div>
+
+      {/* Alert Messages */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+      
+      {successMessage && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          {successMessage}
+        </div>
+      )}
 
       {/* Kartu Form Input */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
@@ -107,37 +226,69 @@ export default function UnggahNilaiIKLHPage() {
               value={scores.lahan} 
               onChange={(val) => handleInputChange('lahan', val)} 
             />
-            <ScoreInput 
-              label="Indeks Kualitas Pesisir Laut" 
-              value={scores.laut} 
-              onChange={(val) => handleInputChange('laut', val)} 
-            />
-            <div className="md:col-span-1">
+            <div className="md:col-span-1" >
                 <ScoreInput 
                 label="Indeks Kehati (Data tahun 2026)" 
                 value={scores.kehati} 
                 onChange={(val) => handleInputChange('kehati', val)} 
                 />
             </div>
+            {hasPesisir && (
+              <ScoreInput 
+                label="Indeks Kualitas Pesisir Laut" 
+                value={scores.laut} 
+                onChange={(val) => handleInputChange('laut', val)} 
+              />
+            )}
           </div>
         </div>
 
         {/* Footer Card */}
-        <div className="bg-white px-8 py-6 border-t border-gray-100 flex justify-end">
-          <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm">
-            Simpan Perubahan
+        <div className="bg-white px-8 py-6 border-t border-gray-100 flex justify-between items-center">
+          <button 
+            onClick={handleSave}
+            disabled={isSaving || statusIklh === 'finalized' || statusIklh === 'approved'}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>
+          {statusIklh && (
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              statusIklh === 'finalized' ? 'bg-blue-100 text-blue-700' :
+              statusIklh === 'approved' ? 'bg-green-100 text-green-700' :
+              'bg-yellow-100 text-yellow-700'
+            }`}>
+              {statusIklh === 'finalized' ? 'Terfinalisasi' :
+               statusIklh === 'approved' ? 'Disetujui' : 'Draft'}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Kartu Summary / Finalisasi */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-        <p className="text-lg text-gray-800 font-medium mb-6">
-          Nilai IKLH yang Diunggah: <span className="text-green-600 font-bold text-2xl ml-1">{uploadedScore}</span>
+        <p className="text-lg text-gray-800 font-medium mb-2">
+          Rata-rata Nilai IKLH
         </p>
-        <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-8 rounded-lg transition-colors shadow-sm">
-          Finalisasi Nilai
+        <p className="text-green-600 font-bold text-4xl mb-2">
+          {calculateAverage()}
+        </p>
+        <p className="text-xs text-gray-500 mb-6">
+          Dihitung dari {hasPesisir ? '5 indeks (termasuk pesisir)' : '4 indeks (tanpa pesisir)'}
+        </p>
+        <button 
+          onClick={handleFinalize}
+          disabled={isFinalizing || !statusIklh || statusIklh === 'finalized' || statusIklh === 'approved'}
+          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-8 rounded-lg transition-colors shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
+          {isFinalizing ? 'Memfinalisasi...' : 'Finalisasi Nilai'}
         </button>
+        {statusIklh === 'finalized' && (
+          <p className="text-sm text-blue-600 mt-3">✓ Data sudah difinalisasi</p>
+        )}
+        {statusIklh === 'approved' && (
+          <p className="text-sm text-green-600 mt-3">✓ Data sudah disetujui Pusdatin</p>
+        )}
       </div>
 
     </div>

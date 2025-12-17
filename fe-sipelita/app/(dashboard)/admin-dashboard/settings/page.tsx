@@ -33,7 +33,7 @@ const INITIAL_MODAL_CONFIG = {
 // Helper Log
 const logActivity = async (action: string, description: string) => {
   try {
-    await axios.post('/api/logs', { action, description, role: 'admin' });
+    // await axios.post('/api/logs', { action, description, role: 'admin' });
   } catch (error) { console.error('Log failed', error); }
 };
 
@@ -55,17 +55,15 @@ export default function SettingsPage() {
   const fetchUsers = useCallback(async () => {
     try {
       // setLoading(true); // Opsional: jangan set loading full page saat refresh data delete
-      const res = await axios.get('/api/admin/users/aktif');
-      const data: User[] = res.data;
-
-      const pusdatinUsers = data.filter(
-        (u: User) => u.role?.name === 'Pusdatin'
-      );
+      const res = await axios.get('/api/admin/pusdatin/1?per_page=100');
+      
+      // Response dari API adalah pagination object dengan struktur: { data: [...], total, current_page, last_page }
+      const pusdatinUsers = res.data.data || [];
 
       setAllPusdatinUsers(pusdatinUsers);
       // Kita tidak setFilteredPusdatinUsers langsung disini agar search term tetap berlaku
       // Logic search di useEffect bawah akan menghandle pembaruan list
-      setStats({ pusdatin: pusdatinUsers.length });
+      setStats({ pusdatin: res.data.total || pusdatinUsers.length });
     } catch (e) {
       console.error('Gagal mengambil data user Pusdatin:', e);
     } finally {
@@ -81,8 +79,8 @@ export default function SettingsPage() {
   useEffect(() => {
     const lowerTerm = searchTerm.toLowerCase();
     const filtered = allPusdatinUsers.filter(user =>
-      user.name.toLowerCase().includes(lowerTerm) ||
-      user.email.toLowerCase().includes(lowerTerm)
+      user.email?.toLowerCase().includes(lowerTerm) ||
+      user.nomor_telepon?.toLowerCase().includes(lowerTerm)
     );
     setFilteredPusdatinUsers(filtered);
     // Jangan reset page jika hanya data yang berubah (bukan search term)
@@ -125,7 +123,7 @@ export default function SettingsPage() {
 
     try {
       // Sesuaikan endpoint dengan route API: DELETE /api/admin/pusdatin/{id}
-      await axios.delete(`/api/admin/pusdatin/${id}`);
+      await axios.delete(`/api/admin/users/${id}`);
       
       // Log Activity
       logActivity('Menghapus Akun', `Menghapus akun Pusdatin: ${userName}`);
@@ -198,7 +196,7 @@ export default function SettingsPage() {
           </div>
           <input
             type="text"
-            placeholder="Cari nama atau email Pusdatin..."
+            placeholder="Cari email atau nomor telepon Pusdatin..."
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -219,7 +217,7 @@ export default function SettingsPage() {
       <UserTable
         users={paginatedUsers().map((u) => ({
           id: u.id,
-          name: u.name,
+          name: u.email, // Gunakan email sebagai name karena kolom name sudah dihilangkan
           email: u.email,
           role: 'Pusdatin', 
           jenis_dlh: '-',   

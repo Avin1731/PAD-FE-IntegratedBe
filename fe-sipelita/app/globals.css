@@ -75,35 +75,6 @@
 
 
 body {
-  /* 1. Ubah warna dasar menjadi PUTIH BERSIH */
-  background-color: #FFFFFF; 
-  
-  /* 2. Hapus overlay putih transparan, sisakan hanya pola grid */
-  background-image: 
-    /* Garis horizontal */
-    linear-gradient(0deg, 
-      transparent 24%, 
-      rgba(0,0,0,0.06) 25%, 
-      rgba(0,0,0,0.06) 26%, 
-      transparent 27%, 
-      transparent 74%, 
-      rgba(0,0,0,0.06) 75%, 
-      rgba(0,0,0,0.06) 76%, 
-      transparent 77%, 
-      transparent),
-      
-    /* Garis vertikal */
-    linear-gradient(90deg, 
-      transparent 24%, 
-      rgba(0,0,0,0.06) 25%, 
-      rgba(0,0,0,0.06) 26%, 
-      transparent 27%, 
-      transparent 74%, 
-      rgba(0,0,0,0.06) 75%, 
-      rgba(0,0,0,0.06) 76%, 
-      transparent 77%, 
-      transparent);
-  
-  /* Ukuran pola */
-  background-size: 4rem 4rem;
+  /* Background putih bersih tanpa grid pattern */
+  background-color: #FFFFFF;
 }

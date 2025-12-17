@@ -1,19 +1,41 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import StatCard from '@/components/StatCard';
 import Link from 'next/link';
 import axios from '@/lib/axios';
 
 export default function AdminDashboardPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState({
     total_users_aktif: 0,
     total_users_pending: 0,
   });
   const [loading, setLoading] = useState(true);
 
+  // Role guard
+  useEffect(() => {
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
+    
+    const role = user.role?.name?.toLowerCase();
+    if (role !== 'admin') {
+      // Redirect ke dashboard yang sesuai
+      if (role === 'pusdatin') router.replace('/pusdatin-dashboard');
+      else if (role === 'provinsi' || role === 'kabupaten/kota') router.replace('/dlh-dashboard');
+      else router.replace('/login');
+    }
+  }, [user, router]);
+
   useEffect(() => {
     const fetchStats = async () => {
+      if (!user) return;
+      
       try {
         const res = await axios.get('/api/admin/dashboard');
         setStats(res.data);
@@ -25,9 +47,9 @@ export default function AdminDashboardPage() {
     };
 
     fetchStats();
-  }, []);
+  }, [user]);
 
-  if (loading) {
+  if (!user || loading) {
     return (
       <div className="p-8 space-y-8">
         <h1 className="text-3xl font-extrabold text-gray-800">Dashboard Admin</h1>

@@ -1,19 +1,18 @@
-// app/some-page/page.tsx
-import UnderConstructionModal from "@/components/UnderConstructionModal";
+'use client';
 
-export default function Page() {
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function PenilaianProvinsiPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/pusdatin-dashboard/penilaian');
+  }, [router]);
+
   return (
-    <>
-      <div className="p-10">
-        {/* Konten halaman boleh ada di sini */}
-        <h1 className="text-xl font-bold">Under Construction</h1>
-      </div>
-
-      {/* Modal muncul otomatis */}
-      <UnderConstructionModal
-        title="Sedang Dalam Pengembangan"
-        message="Fitur ini belum tersedia saat ini."
-      />
-    </>
+    <div className="flex items-center justify-center min-h-[400px]">
+      <p className="text-gray-500">Redirecting...</p>
+    </div>
   );
 }

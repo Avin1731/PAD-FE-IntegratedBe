@@ -8,6 +8,14 @@ import axios from '@/lib/axios';
 import { FiSearch } from 'react-icons/fi';
 
 const LOGS_PER_PAGE = 25;
+const CACHE_DURATION = 2 * 60 * 1000; // 2 menit untuk logs
+
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+const dataCache: Record<string, CacheEntry> = {};
 
 const statCardColors = [
   { bg: 'bg-slate-50', border: 'border-slate-300', titleColor: 'text-slate-600', valueColor: 'text-slate-800' },
@@ -19,9 +27,6 @@ export default function UsersLogsPage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedYear, setSelectedYear] = useState<number | ''>(''); // Default kosong = semua tahun
-  const [selectedPusdatin, setSelectedPusdatin] = useState('');
-  const [pusdatinList, setPusdatinList] = useState<Array<{id: number, email: string}>>([]);
 
   // Statistik
   const [stats, setStats] = useState({
@@ -29,40 +34,56 @@ export default function UsersLogsPage() {
     pusdatinLogs: 0,
   });
 
-  // Fetch pusdatin list untuk dropdown
-  useEffect(() => {
-    const fetchPusdatinList = async () => {
-      try {
-        const res = await axios.get('/api/admin/pusdatin/approved');
-        const users = Array.isArray(res.data) ? res.data : res.data.data || [];
-        setPusdatinList(users.map((u: any) => ({ id: u.id, email: u.email })));
-      } catch (error) {
-        console.error('Gagal mengambil daftar pusdatin:', error);
-      }
-    };
-    fetchPusdatinList();
-  }, []);
+  // Helper: Check cache validity
+  const isCacheValid = (key: string): boolean => {
+    if (!dataCache[key]) return false;
+    const age = Date.now() - dataCache[key].timestamp;
+    return age < CACHE_DURATION;
+  };
 
   // Fetch data dari API
   useEffect(() => {
     const fetchLogs = async () => {
+      const cacheKey = 'admin-logs';
+      
+      // Check cache
+      if (isCacheValid(cacheKey)) {
+        const cachedData = dataCache[cacheKey].data;
+        setLogs(cachedData);
+        
+        // Hitung stats
+        const pusdatinLogs = cachedData.filter((log: Log) => 
+          log.role?.toLowerCase() === 'pusdatin'
+        );
+        
+        setStats({
+          totalLogs: cachedData.length,
+          pusdatinLogs: pusdatinLogs.length,
+        });
+        
+        setLoading(false);
+        return;
+      }
+
       try {
-        setLoading(true);
-        
-        // Build URL dengan query params (lebih fleksibel)
-        const params = new URLSearchParams();
-        if (selectedYear) params.append('year', selectedYear.toString());
-        if (selectedPusdatin) params.append('pusdatin_id', selectedPusdatin);
-        
-        const url = `/api/admin/track?${params.toString()}`;
-        
-        const res = await axios.get(url);
-        const data: Log[] = Array.isArray(res.data) ? res.data : res.data.data || [];
+        const res = await axios.get('/api/admin/logs');
+        const data: Log[] = Array.isArray(res.data) ? res.data : res.data.data;
+
+        // Store in cache
+        dataCache[cacheKey] = {
+          data,
+          timestamp: Date.now()
+        };
+
+        // Filter hanya Pusdatin
+        const pusdatinLogs = data.filter(log => 
+          log.role?.toLowerCase() === 'pusdatin'
+        );
 
         setLogs(data);
         setStats({
           totalLogs: data.length,
-          pusdatinLogs: data.length, // Semua log dari backend sudah pusdatin
+          pusdatinLogs: pusdatinLogs.length,
         });
       } catch (error) {
         console.error('Gagal mengambil data log:', error);
@@ -73,19 +94,21 @@ export default function UsersLogsPage() {
     };
 
     fetchLogs();
-  }, [selectedYear, selectedPusdatin]);
+  }, []);
 
-  // Filter logs - hanya search term (backend sudah filter by year & pusdatin)
+  // Filter logs - HANYA Pusdatin
   const filteredLogs = useMemo(() => {
-    let result = logs;
+    let result = logs.filter(log => 
+      log.role?.toLowerCase() === 'pusdatin'
+    );
 
-    // Filter by search term (client-side)
+    // Filter by search term
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
       result = result.filter(log => 
-        log.user?.toLowerCase().includes(lowerTerm) ||
+        log.user_name?.toLowerCase().includes(lowerTerm) ||
         log.action?.toLowerCase().includes(lowerTerm) ||
-        log.target?.toLowerCase().includes(lowerTerm)
+        log.description?.toLowerCase().includes(lowerTerm)
       );
     }
 
@@ -127,62 +150,6 @@ export default function UsersLogsPage() {
         <p className="text-gray-600">Riwayat aktivitas pengguna Pusdatin dalam sistem.</p>
       </header>
 
-      {/* Filter Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Year Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tahun
-            </label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Semua Tahun</option>
-              {[2024, 2025, 2026, 2027].map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Pusdatin Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Pusdatin
-            </label>
-            <select
-              value={selectedPusdatin}
-              onChange={(e) => setSelectedPusdatin(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Semua Pusdatin</option>
-              {pusdatinList.map(p => (
-                <option key={p.id} value={p.id}>{p.email}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Search */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Cari
-            </label>
-            <div className="relative">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Cari aktivitas..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Statistik */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {statsData.map((stat, index) => (
@@ -195,10 +162,28 @@ export default function UsersLogsPage() {
         ))}
       </div>
 
+      {/* Search Bar */}
+      <div className="flex items-center mb-4">
+        <div className="relative flex-1 max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <FiSearch className="text-gray-400" />
+          </div>
+          <input
+            type="text"
+            placeholder="Cari nama user, aksi, atau deskripsi..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-all outline-none"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
       {/* Log Table */}
       {paginatedLogs.length > 0 ? (
         <LastActivityCard
           logs={paginatedLogs}
+          title="Aktivitas Terbaru Pusdatin"
+          showRole={false}
         />
       ) : (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-12 text-center">

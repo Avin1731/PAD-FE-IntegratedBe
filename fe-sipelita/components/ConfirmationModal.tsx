@@ -78,14 +78,14 @@ export default function ConfirmationModal({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={handleBackdropClick}
         >
           <motion.div
-            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md"
+            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md relative"
             initial={{ scale: 0.8, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.8, opacity: 0, y: 20 }}
@@ -96,13 +96,37 @@ export default function ConfirmationModal({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <motion.div 
-              className="flex justify-center mb-4"
-              initial={{ scale: 0.8, rotate: -5 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ delay: 0.1, type: "spring" }}
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
             >
-              <IconComponent className={`w-14 h-14 ${config.iconColor}`} />
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <motion.div 
+              className="flex justify-center mb-6"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+            >
+              {variant === 'danger' && (
+                <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center">
+                  <XCircle className="w-12 h-12 text-red-600" strokeWidth={2.5} />
+                </div>
+              )}
+              {variant === 'warning' && (
+                <div className="w-20 h-20 rounded-full bg-yellow-100 flex items-center justify-center">
+                  <AlertTriangle className="w-12 h-12 text-yellow-600" strokeWidth={2.5} />
+                </div>
+              )}
+              {variant === 'success' && (
+                <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-600" strokeWidth={2.5} />
+                </div>
+              )}
             </motion.div>
 
             <motion.div
@@ -110,10 +134,10 @@ export default function ConfirmationModal({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
             >
-              <h2 className="text-xl font-semibold text-center text-gray-800 mb-2">
+              <h2 className="text-xl font-bold text-center text-gray-900 mb-3">
                 {title}
               </h2>
-              <p className="text-center text-gray-600 mb-6 leading-relaxed">
+              <p className="text-center text-gray-600 mb-8 leading-relaxed text-sm">
                 {message}
               </p>
             </motion.div>
@@ -127,7 +151,7 @@ export default function ConfirmationModal({
               >
                 <button
                   onClick={handleCancel}
-                  className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium flex-1 max-w-32"
+                  className="px-6 py-2.5 rounded-lg border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium min-w-[100px]"
                 >
                   {cancelLabel}
                 </button>
@@ -135,7 +159,7 @@ export default function ConfirmationModal({
                 <button
                   ref={confirmButtonRef}
                   onClick={handleConfirm}
-                  className={`px-5 py-2.5 rounded-lg text-white font-medium transition-colors flex-1 max-w-32 ${config.buttonColor}`}
+                  className={`px-6 py-2.5 rounded-lg text-white font-medium transition-colors min-w-[100px] ${config.buttonColor}`}
                 >
                   {confirmLabel}
                 </button>

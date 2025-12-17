@@ -30,8 +30,6 @@ export interface User {
 interface LoginCredentials {
   email: string;
   password: string;
-  role_id: string | null;
-  jenis_dlh_id: string | null;
 }
 
 interface RegisterData {
@@ -49,7 +47,6 @@ interface RegisterData {
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean;
   provinces: Province[];
   regencies: Regency[];
   jenisDlhs: JenisDlh[];
@@ -82,67 +79,80 @@ const MOCK_JENIS_DLHS: JenisDlh[] = [
 ];
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Start with null for both server and client (prevents hydration mismatch)
+  const [user, setUser] = useState<User | null>(null);
   
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [regencies, setRegencies] = useState<Regency[]>([]);
   const [jenisDlhs, setJenisDlhs] = useState<JenisDlh[]>([]);
 
-  // --- FUNGSI FETCH USER YANG DIPERBAIKI ---
-  const fetchUser = async (): Promise<User | null> => {
-    try {
-      const res = await axios.get<User>('/api/user');
-      setUser(res.data);
-      return res.data;
-    } catch (error: unknown) {
-      if (isAxiosError(error) && error.response?.status !== 401) {
-        console.error("Error fetching user:", error.message);
-      }
-      setUser(null);
-      return null;
+  // Update user state and cache
+  const updateUser = (userData: User | null) => {
+    setUser(userData);
+    if (userData) {
+      localStorage.setItem('user_data', JSON.stringify(userData));
+    } else {
+      localStorage.removeItem('user_data');
     }
   };
 
+  // Load cached user immediately after mount (client-side only)
   useEffect(() => {
+    setIsMounted(true);
+    const token = localStorage.getItem('auth_token');
+    const cached = localStorage.getItem('user_data');
+    
+    console.log('🔍 AUTH CONTEXT MOUNT CHECK:');
+    console.log('Token:', token ? 'EXISTS' : 'MISSING');
+    console.log('Cached user:', cached ? 'EXISTS' : 'MISSING');
+    
+    // Kalau ada token & cached user, langsung load aja
+    // Gak perlu fetch /api/user - token udah otomatis attach di setiap request
+    if (token && cached) {
+      try {
+        const userData = JSON.parse(cached);
+        console.log('✅ Loaded user from cache:', userData.email, userData.role?.name);
+        setUser(userData);
+      } catch (e) {
+        // Kalau gagal parse, clear cache rusak
+        console.error('❌ Failed to parse cached user:', e);
+        localStorage.removeItem('user_data');
+        localStorage.removeItem('auth_token');
+      }
+    } else {
+      console.log('⚠️ No token or cached user found');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isInitialized || !isMounted) return;
+    
     const initAuth = async () => {
       try {
-        // 1. Cek status login pengguna saat ini
-        await fetchUser();
-
-        // 2. Ambil data dropdown (Wilayah & Jenis DLH) secara paralel
-        const [provincesResult, regenciesResult, jenisDlhsResult] = await Promise.allSettled([
-          axios.get<Province[]>('/api/wilayah/provinces').then(res => setProvinces(res.data)),
-          axios.get<Regency[]>('/api/wilayah/regencies/all').then(res => setRegencies(res.data)),
-          axios.get<JenisDlh[]>('/api/jenis-dlh').then(res => setJenisDlhs(res.data)),
-        ]);
-
-        // 3. Gunakan Mock Data HANYA untuk dropdown jika API gagal (Mode Development)
-        if (process.env.NODE_ENV === 'development') {
-          if (provincesResult.status === 'rejected') {
-            console.warn('Using Mock Provinces');
-            setProvinces(MOCK_PROVINCES);
+        // Fetch dropdown data in parallel (non-blocking)
+        // Note: provinces diload oleh page yang membutuhkan (pusdatin dashboard)
+        Promise.allSettled([
+          axios.get('/api/wilayah/provinces').then(res => setProvinces((res.data.data || res.data) as Province[])),
+        ]).then(([provincesResult]) => {
+          // Use mock data only for dropdowns if API fails
+          if (process.env.NODE_ENV === 'development') {
+            if (provincesResult.status === 'rejected') setProvinces(MOCK_PROVINCES);
           }
-          if (regenciesResult.status === 'rejected') {
-            console.warn('Using Mock Regencies');
-            setRegencies(MOCK_REGENCIES);
-          }
-          if (jenisDlhsResult.status === 'rejected') {
-            console.warn('Using Mock Jenis DLH');
-            setJenisDlhs(MOCK_JENIS_DLHS);
-          }
-        }
+        });
 
       } catch (error: unknown) {
-        console.error("Error during auth initialization:", error);
+        console.error("Auth initialization error:", error);
       } finally {
-        setLoading(false);
+        setIsInitialized(true);
       }
     };
 
     initAuth();
-  }, []);
+  }, [isInitialized, isMounted]);
 
   const register = async (data: RegisterData): Promise<void> => {
     try {
@@ -151,7 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Login otomatis setelah register berhasil
       const token = response.data.token;
       localStorage.setItem('auth_token', token);
-      setUser(response.data.user);
+      updateUser(response.data.user);
       
       if (response.data.user?.role?.name) {
         const roleName = response.data.user.role.name.toLowerCase();
@@ -168,56 +178,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     try {
-      const payload = {
+      // PENTING: Clear localStorage dulu untuk mencegah cache user lama
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_data');
+      
+      const response = await axios.post('/api/login', {
         email: credentials.email,
         password: credentials.password,
-        role_id: credentials.role_id ? Number(credentials.role_id) : null,
-        jenis_dlh_id: credentials.jenis_dlh_id ? Number(credentials.jenis_dlh_id) : null,
-      };
-      
-      const response = await axios.post('/api/auth/login', payload);
+      });
       
       // SIMPAN TOKEN & USER DATA
-      const token = response.data.token;
+      const token = response.data.user.token;
+      const userData = response.data.user;
+      
       localStorage.setItem('auth_token', token);
-      setUser(response.data.user);
+      localStorage.setItem('user_data', JSON.stringify(userData));
+      setUser(userData);
 
-      if (response.data.user?.role?.name) {
-        const roleName = response.data.user.role.name.toLowerCase();
-        if (roleName === 'admin') router.push('/admin-dashboard');
-        else if (roleName === 'pusdatin') router.push('/pusdatin-dashboard');
-        else if (roleName === 'dlh') router.push('/dlh-dashboard');
-        else router.push('/');
+      // Redirect berdasarkan role
+      const roleName = userData?.role?.name?.toLowerCase();
+      console.log('🔐 Login successful, role:', roleName);
+      console.log('📦 User data saved:', userData);
+      
+      if (roleName === 'admin') {
+        router.push('/admin-dashboard');
+      } else if (roleName === 'pusdatin') {
+        router.push('/pusdatin-dashboard');
+      } else if (roleName === 'provinsi' || roleName === 'kabupaten/kota') {
+        router.push('/dlh-dashboard');
+      } else {
+        console.warn('⚠️ Unknown role:', roleName);
+        router.push('/');
       }
     } catch (error: unknown) {
       console.error("Login failed:", error);
+      // Clear jika login gagal
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_data');
       throw error;
     }
   };
 
   const logout = async (): Promise<void> => {
     try {
-      await axios.post('/api/auth/logout');
+      await axios.post('/api/logout');
     } catch (error: unknown) {
       console.error("Logout error (ignoring):", error);
     } finally {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_data');
       setUser(null);
-      router.push('/');
+      router.push('/login');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-        <span className="ml-2">Memuat...</span>
-      </div>
-    );
-  }
-
+  // Tidak perlu blocking loading screen di sini - biarkan children render
+  // Loading state akan dihandle oleh masing-masing komponen yang membutuhkan
   return (
-    <AuthContext.Provider value={{ user, loading, provinces, regencies, jenisDlhs, login, register, logout }}> 
+    <AuthContext.Provider value={{ user, provinces, regencies, jenisDlhs, login, register, logout }}> 
       {children}
     </AuthContext.Provider>
   );

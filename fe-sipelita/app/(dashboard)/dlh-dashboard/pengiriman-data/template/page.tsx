@@ -1,7 +1,7 @@
 "use client";
 
-import React from 'react';
-// import Link from 'next/link'; // Tidak digunakan jika hanya tombol download
+import React, { useState } from 'react';
+import axios from '@/lib/axios';
 
 // --- Ikon-ikon ---
 const IconFolder = () => (
@@ -26,16 +26,26 @@ const DownloadIcon = () => (
     </svg>
 );
 
+const LoadingSpinner = () => (
+    <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+);
+
 // --- Interface ---
 interface TemplateItemProps {
     title: string;
     description: string;
-    isFolder?: boolean; // Untuk membedakan icon Folder vs File
-    isZip?: boolean;    // Untuk tombol "Unduh ZIP"
+    matraName?: string; // Nama matra untuk API (null = download all)
+    isFolder?: boolean;
+    isZip?: boolean;
+    onDownload: (matraName?: string) => void;
+    downloading: boolean;
 }
 
 // --- Komponen Item Template ---
-const TemplateItem = ({ title, description, isFolder = false, isZip = false }: TemplateItemProps) => {
+const TemplateItem = ({ title, description, matraName, isFolder = false, isZip = false, onDownload, downloading }: TemplateItemProps) => {
     return (
         <div className="flex items-center justify-between py-6 border-b border-gray-100 last:border-0">
             <div className="flex items-center gap-4">
@@ -47,13 +57,15 @@ const TemplateItem = ({ title, description, isFolder = false, isZip = false }: T
             </div>
             
             <button 
-                className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-colors
+                onClick={() => onDownload(matraName)}
+                disabled={downloading}
+                className={`flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed
                     ${isZip 
-                        ? 'bg-green-600 text-white hover:bg-green-700' // Tombol Hijau Gelap (ZIP)
-                        : 'bg-green-500 text-white hover:bg-green-600' // Tombol Hijau Standar
+                        ? 'bg-green-600 text-white hover:bg-green-700' 
+                        : 'bg-green-500 text-white hover:bg-green-600'
                     }`}
             >
-                <DownloadIcon />
+                {downloading ? <LoadingSpinner /> : <DownloadIcon />}
                 {isZip ? 'Unduh ZIP' : 'Unduh'}
             </button>
         </div>
@@ -61,31 +73,64 @@ const TemplateItem = ({ title, description, isFolder = false, isZip = false }: T
 };
 
 export default function UnduhTemplatePage() {
-    
-    // Data Dummy sesuai gambar
+    const [downloadingItem, setDownloadingItem] = useState<string | null>(null);
+
+    const handleDownload = async (matraName?: string) => {
+        const itemKey = matraName || 'all';
+        setDownloadingItem(itemKey);
+
+        try {
+            let url = '/api/dinas/template/download-all-zip';
+            let fileName = 'Template_Tabel_Utama_SLHD.zip';
+
+            if (matraName) {
+                url = `/api/dinas/template/download-matra-zip/${encodeURIComponent(matraName)}`;
+                fileName = `${matraName.replace(/[, ]/g, '_')}_Templates.zip`;
+            }
+
+            const response = await axios.get(url, { responseType: 'blob' });
+            
+            const blob = new Blob([response.data], { type: 'application/zip' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (err: any) {
+            console.error('Error downloading:', err);
+            alert(err.response?.data?.message || 'Gagal mengunduh file');
+        } finally {
+            setDownloadingItem(null);
+        }
+    };
+
+    // Data template sesuai file ZIP yang tersedia
     const templates = [
-        { title: "Unduh Semua Template", description: "Satu folder ZIP berisi semua template dokumen SLHD Tabel Utama.", isFolder: true, isZip: true },
-        { title: "Keanekaragaman Hayati", description: ".zip (excel)", isFolder: false },
-        { title: "Kualitas Air", description: ".zip (excel)", isFolder: false },
-        { title: "Laut, Pesisir, dan Pantai", description: ".zip (excel)", isFolder: false },
-        { title: "Kualitas Udara", description: ".zip (excel)", isFolder: false },
-        { title: "Lahan dan Hutan", description: ".zip (excel)", isFolder: false },
-        { title: "Pengelolaan Sampah dan Limbah", description: ".zip (excel)", isFolder: false },
-        { title: "Perubahan Iklim", description: ".zip (excel)", isFolder: false },
-        { title: "Risiko Bencana", description: ".zip (excel)", isFolder: false },
-        { title: "Dokumen Non Matra", description: ".zip (excel)", isFolder: false },
+        { title: "Unduh Semua Template", description: "Satu folder ZIP berisi semua template dokumen SLHD Tabel Utama (80 tabel).", isFolder: true, isZip: true, matraName: undefined },
+        { title: "Keanekaragaman Hayati", description: "8 tabel (.zip excel)", matraName: "Keanekaragaman Hayati" },
+        { title: "Kualitas Air", description: "9 tabel (.zip excel)", matraName: "Kualitas Air" },
+        { title: "Laut, Pesisir, dan Pantai", description: "8 tabel (.zip excel)", matraName: "Laut, Pesisir, dan Pantai" },
+        { title: "Kualitas Udara", description: "6 tabel (.zip excel)", matraName: "Kualitas Udara" },
+        { title: "Lahan dan Hutan", description: "14 tabel (.zip excel)", matraName: "Lahan dan Hutan" },
+        { title: "Pengelolaan Sampah dan Limbah", description: "5 tabel (.zip excel)", matraName: "Pengelolaan Sampah dan Limbah" },
+        { title: "Perubahan Iklim", description: "4 tabel (.zip excel)", matraName: "Perubahan Iklim" },
+        { title: "Risiko Bencana", description: "5 tabel (.zip excel)", matraName: "Risiko Bencana" },
+        { title: "Dokumen Non Matra", description: "21 tabel - Lab, D3TLH, KLHS, Isu Prioritas (.zip excel)", matraName: "Dokumen Non Matra" },
     ];
 
     return (
         <div className="max-w-5xl mx-auto py-8 px-4">
-            {/* Breadcrumb (Opsional, disesuaikan dengan layout Anda) */}
+            {/* Breadcrumb */}
             <div className="text-sm text-green-600 mb-2 font-medium">
                 Panel Pengiriman Data <span className="text-gray-400 mx-2">&gt;</span> <span className="text-gray-600">Unduh Template Dokumen</span>
             </div>
 
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Unduh Template Dokumen</h1>
             <p className="text-gray-500 mb-8 text-sm">
-                Silahkan unduh format template dokumen penilaian yang sesuai dengan tahapan Nirwasita Tantra
+                Silahkan unduh format template dokumen SLHD Tabel Utama sesuai dengan kategori matra
             </p>
 
             {/* Card Utama */}
@@ -94,7 +139,7 @@ export default function UnduhTemplatePage() {
                 <div className="px-6 py-4 border-b border-gray-200 bg-white">
                     <h2 className="text-sm font-bold text-green-600 flex items-center gap-2">
                         <span className="w-1 h-4 bg-green-600 rounded-full inline-block"></span>
-                        SLHD Tabel Utama
+                        SLHD Tabel Utama (80 Tabel)
                     </h2>
                 </div>
 
@@ -105,8 +150,11 @@ export default function UnduhTemplatePage() {
                             key={index}
                             title={item.title}
                             description={item.description}
+                            matraName={item.matraName}
                             isFolder={item.isFolder}
                             isZip={item.isZip}
+                            onDownload={handleDownload}
+                            downloading={downloadingItem === (item.matraName || 'all')}
                         />
                     ))}
                 </div>

@@ -48,6 +48,8 @@ export default function AdminLoginPage() {
         role_id: ROLE_ID_ADMIN,
         jenis_dlh_id: JENIS_ID_ADMIN
       });
+      
+      console.log("API Login Response:", Response);
     } catch (err: unknown) {
       if (isAxiosError(err)) {
         let message = 'Login gagal. Silakan coba lagi.';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { User } from '@/context/AuthContext';
 import InnerNav from '@/components/InnerNav';
 import UserTable from '@/components/UserTable';
@@ -10,6 +10,15 @@ import axios from '@/lib/axios';
 import { FiSearch } from 'react-icons/fi'; 
 
 const USERS_PER_PAGE = 25;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 menit
+
+// Cache structure
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+const dataCache: Record<string, CacheEntry> = {};
 
 // 🎨 Warna per-card untuk StatCard biasa
 const statCardColors = [
@@ -50,9 +59,8 @@ const ProgressStatCard = ({ title, current, max, color = 'blue' }: { title: stri
 
 export default function UsersAktifPage() {
   const [currentPage, setCurrentPage] = useState(1);
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-
+  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  
   // Tab state
   const [activeTab, setActiveTab] = useState('dlh');
   const [activeDlhTab, setActiveDlhTab] = useState('provinsi');
@@ -60,92 +68,179 @@ export default function UsersAktifPage() {
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Data per role
+  const [dlhProvData, setDlhProvData] = useState<any>(null);
+  const [dlhKabData, setDlhKabData] = useState<any>(null);
+  const [pusdatinData, setPusdatinData] = useState<any>(null);
+
+  // Stats
   const [stats, setStats] = useState({
     dlhProvinsi: 0,
     dlhKabKota: 0,
     pusdatin: 0,
-    admin: 0,
   });
 
-  // --- Fetch ---
+  // Helper: Check cache validity
+  const isCacheValid = (key: string): boolean => {
+    if (!dataCache[key]) return false;
+    const age = Date.now() - dataCache[key].timestamp;
+    return age < CACHE_DURATION;
+  };
+
+  // Helper: Fetch dengan cache
+  const fetchWithCache = useCallback(async (endpoint: string, cacheKey: string) => {
+    // Check cache first
+    if (isCacheValid(cacheKey)) {
+      console.log(`Using cached data for ${cacheKey}`);
+      return dataCache[cacheKey].data;
+    }
+
+    // Fetch dari API
+    setLoading(prev => ({ ...prev, [cacheKey]: true }));
+    try {
+      const res = await axios.get(endpoint);
+      const data = res.data;
+      
+      // Store in cache
+      dataCache[cacheKey] = {
+        data,
+        timestamp: Date.now()
+      };
+      
+      return data;
+    } catch (e) {
+      console.error(`Gagal fetch ${endpoint}:`, e);
+      return null;
+    } finally {
+      setLoading(prev => ({ ...prev, [cacheKey]: false }));
+    }
+  }, []);
+
+  // Fetch stats untuk semua role di awal (untuk preview angka)
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const res = await axios.get('/api/admin/users/aktif');
-        const data: User[] = res.data;
+    const fetchAllStats = async () => {
+      // Fetch semua stats secara parallel untuk preview
+      const [provData, kabData, pusdatinDataRes] = await Promise.all([
+        fetchWithCache('/api/admin/provinsi/1?per_page=1', 'dlh-prov-stats'),
+        fetchWithCache('/api/admin/kabupaten/1?per_page=1', 'dlh-kab-stats'),
+        fetchWithCache('/api/admin/pusdatin/1?per_page=1', 'pusdatin-stats'),
+      ]);
 
-        const dlhProvinsi = data.filter(
-          (u: User) => u.role?.name === 'DLH' && u.jenis_dlh?.name === 'DLH Provinsi'
-        );
-        const dlhKabKota = data.filter(
-          (u: User) => u.role?.name === 'DLH' && u.jenis_dlh?.name === 'DLH Kab-Kota'
-        );
-        const pusdatin = data.filter((u: User) => u.role?.name === 'Pusdatin');
-        const admin = data.filter((u: User) => u.role?.name === 'Admin');
+      setStats({
+        dlhProvinsi: provData?.total || 0,
+        dlhKabKota: kabData?.total || 0,
+        pusdatin: pusdatinDataRes?.total || 0,
+      });
+    };
 
-        setUsers(data);
-        setStats({
-          dlhProvinsi: dlhProvinsi.length,
-          dlhKabKota: dlhKabKota.length,
-          pusdatin: pusdatin.length,
-          admin: admin.length,
-        });
-      } catch (e) {
-        console.error('Gagal mengambil data user aktif:', e);
-      } finally {
-        setLoading(false);
+    fetchAllStats();
+  }, [fetchWithCache]);
+
+  // Fetch data berdasarkan tab yang aktif
+  useEffect(() => {
+    const fetchData = async () => {
+      if (activeTab === 'dlh') {
+        // Fetch DLH Provinsi
+        if (activeDlhTab === 'provinsi' && !dlhProvData) {
+          const data = await fetchWithCache('/api/admin/provinsi/1', 'dlh-prov');
+          if (data) {
+            setDlhProvData(data);
+          }
+        }
+        // Fetch DLH Kab/Kota
+        if (activeDlhTab === 'kabkota' && !dlhKabData) {
+          const data = await fetchWithCache('/api/admin/kabupaten/1', 'dlh-kab');
+          if (data) {
+            setDlhKabData(data);
+          }
+        }
+      } else if (activeTab === 'pusdatin' && !pusdatinData) {
+        const data = await fetchWithCache('/api/admin/pusdatin/1', 'pusdatin');
+        if (data) {
+          setPusdatinData(data);
+        }
       }
     };
 
-    fetchUsers();
-  }, []);
+    fetchData();
+  }, [activeTab, activeDlhTab, dlhProvData, dlhKabData, pusdatinData, fetchWithCache]);
 
-  // --- Filter berdasarkan Tab DAN Search ---
-  const filteredUsers = () => {
-    // PERBAIKAN: Tambahkan tipe eksplisit ': User[]' di sini
-    let result: User[] = []; 
-
-    // 1. Filter by Tab/Role
+  // Get current data based on active tab
+  const getCurrentData = useMemo(() => {
     if (activeTab === 'dlh') {
-      result = activeDlhTab === 'provinsi'
-        ? users.filter((u) => u.jenis_dlh?.name === 'DLH Provinsi')
-        : users.filter((u) => u.jenis_dlh?.name === 'DLH Kab-Kota');
+      return activeDlhTab === 'provinsi' ? dlhProvData : dlhKabData;
     } else if (activeTab === 'pusdatin') {
-      result = users.filter((u) => u.role?.name === 'Pusdatin');
-    } else if (activeTab === 'admin') {
-      result = users.filter((u) => u.role?.name === 'Admin');
+      return pusdatinData;
     }
+    return null;
+  }, [activeTab, activeDlhTab, dlhProvData, dlhKabData, pusdatinData]);
 
-    // 2. Filter by Search Term
-    if (searchTerm) {
-      const lowerTerm = searchTerm.toLowerCase();
-      result = result.filter(user => 
-        user.name.toLowerCase().includes(lowerTerm) || 
-        user.email.toLowerCase().includes(lowerTerm)
-      );
-    }
+  // Get current users from pagination data
+  const currentUsers = useMemo(() => {
+    if (!getCurrentData?.data) return [];
+    return getCurrentData.data;
+  }, [getCurrentData]);
 
-    return result;
-  };
+  // Filter users by search
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm) return currentUsers;
+    
+    const lowerTerm = searchTerm.toLowerCase();
+    return currentUsers.filter((user: any) => 
+      user.name?.toLowerCase().includes(lowerTerm) || 
+      user.email?.toLowerCase().includes(lowerTerm) ||
+      user.dinas?.nama_dinas?.toLowerCase().includes(lowerTerm)
+    );
+  }, [currentUsers, searchTerm]);
 
-  // --- Pagination ---
-  const totalPages = Math.ceil(filteredUsers().length / USERS_PER_PAGE);
+  // Total pages dari API atau dari filtered
+  const totalPages = getCurrentData?.last_page || 1;
 
-  const paginatedUsers = () => {
-    const start = (currentPage - 1) * USERS_PER_PAGE;
-    return filteredUsers().slice(start, start + USERS_PER_PAGE);
-  };
-
-  // Reset page & search ketika tab berubah
+  // Reset page ketika tab berubah
   useEffect(() => {
     setCurrentPage(1);
     setSearchTerm(''); 
   }, [activeTab, activeDlhTab]);
 
-  // Reset page ketika search berubah
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
+  // Handle page change - fetch new data if needed
+  const handlePageChange = useCallback(async (page: number) => {
+    // Update current page immediately
+    setCurrentPage(page);
+    
+    // Fetch data untuk page baru
+    let endpoint = '';
+    let cacheKey = '';
+    
+    if (activeTab === 'dlh') {
+      if (activeDlhTab === 'provinsi') {
+        endpoint = `/api/admin/provinsi/1?page=${page}`;
+        cacheKey = `dlh-prov-${page}`;
+      } else {
+        endpoint = `/api/admin/kabupaten/1?page=${page}`;
+        cacheKey = `dlh-kab-${page}`;
+      }
+    } else if (activeTab === 'pusdatin') {
+      endpoint = `/api/admin/pusdatin/1?page=${page}`;
+      cacheKey = `pusdatin-${page}`;
+    }
+
+    if (endpoint) {
+      const data = await fetchWithCache(endpoint, cacheKey);
+      
+      if (data) {
+        // Update state berdasarkan tab aktif
+        if (activeTab === 'dlh') {
+          if (activeDlhTab === 'provinsi') {
+            setDlhProvData(data);
+          } else {
+            setDlhKabData(data);
+          }
+        } else if (activeTab === 'pusdatin') {
+          setPusdatinData(data);
+        }
+      }
+    }
+  }, [activeTab, activeDlhTab, fetchWithCache]);
 
   // Tabs
   const dlhTabs = [
@@ -164,19 +259,11 @@ export default function UsersAktifPage() {
   // Stats Data
   const statsData = [
     { title: 'Total DLH Provinsi Aktif', value: stats.dlhProvinsi, max: 38, type: 'progress', color: 'blue' as const, link: '#dlh' },
-    { title: 'Total DLH Kab/Kota Aktif', value: stats.dlhKabKota, max: 514, type: 'progress', color: 'blue' as const, link: '#dlh' },
+    { title: 'Total DLH Kab/Kota Aktif', value: stats.dlhKabKota, max: 538, type: 'progress', color: 'blue' as const, link: '#dlh' },
     { title: 'Total Pusdatin Aktif', value: stats.pusdatin, type: 'simple', color: 'green' as const, link: '#pusdatin' },
-    { title: 'Total Admin Aktif', value: stats.admin, type: 'simple', color: 'red' as const, link: '#admin' },
   ];
 
-  if (loading) {
-    return (
-      <div className="p-8 space-y-8">
-        <h1 className="text-3xl font-extrabold text-green-800">Memuat Data...</h1>
-        <div className="h-64 bg-gray-100 animate-pulse rounded-xl"></div>
-      </div>
-    );
-  }
+  const isLoading = loading['dlh-prov'] || loading['dlh-kab'] || loading['pusdatin'];
 
   return (
     <div className="p-8 space-y-8">
@@ -251,35 +338,53 @@ export default function UsersAktifPage() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+        </div>
+      )}
+
       {/* Tabel User */}
-      <UserTable
-        users={paginatedUsers().map((u) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          role: u.role?.name ?? '-',
-          jenis_dlh: u.jenis_dlh?.name,
-          status: 'aktif',
-          province: u.province_name ?? '-',
-          regency: u.regency_name ?? '-',
-        }))}
-        showLocation={isDlhTabActive}
-        showDlhSpecificColumns={isDlhTabActive}
-      />
+      {!isLoading && (
+        <>
+          <UserTable
+            users={filteredUsers.map((u: any) => ({
+              id: u.id,
+              name: u.name || u.email,
+              email: u.email,
+              role: u.role ?? (activeTab === 'dlh' ? 'DLH' : 'Pusdatin'),
+              jenis_dlh: activeDlhTab === 'provinsi' ? 'DLH Provinsi' : 'DLH Kab-Kota',
+              status: 'aktif',
+              province: u.province_name ?? '-',
+              regency: u.regency_name ?? '-',
+            }))}
+            showLocation={isDlhTabActive}
+            showDlhSpecificColumns={isDlhTabActive}
+          />
 
-      {/* Pagination */}
-      <div className="flex justify-between items-center mt-6">
-        <span className="text-sm text-gray-600">
-          Menampilkan {paginatedUsers().length} dari {filteredUsers().length} pengguna
-        </span>
+          {/* Pagination */}
+          <div className="flex justify-between items-center mt-6">
+            <span className="text-sm text-gray-600">
+              Menampilkan {filteredUsers.length} dari {getCurrentData?.total || 0} pengguna
+            </span>
 
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={setCurrentPage}
-          siblings={1}
-        />
-      </div>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+              siblings={1}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Empty State */}
+      {!isLoading && filteredUsers.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-gray-500">Tidak ada data pengguna</p>
+        </div>
+      )}
     </div>
   );
 }

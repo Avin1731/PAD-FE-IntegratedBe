@@ -68,7 +68,6 @@ export default function UserTable({
             
             <thead className={getRoleTheme(users[0]?.role || 'dlh').headerBg}>
               <tr>
-                <th className="py-3 px-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Nama</th>
                 <th className="py-3 px-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Email</th>
                 <th className="py-3 px-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Role</th>
                 {showLocation && (
@@ -94,9 +93,6 @@ export default function UserTable({
                 return (
                   <tr key={user.id} className="hover:bg-gray-100">
                     
-                    <td className={`${theme.rowBg} py-4 px-4 text-sm text-gray-800 font-medium`}>
-                      {user.name}
-                    </td>
                     <td className={`${theme.rowBg} py-4 px-4 text-sm text-gray-700`}>
                       {user.email}
                     </td>
