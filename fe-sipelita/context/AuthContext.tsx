@@ -3,7 +3,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from '../lib/axios';
-import { isAxiosError } from 'axios';
 
 // --- TIPE DATA UTAMA ---
 interface Province { id: string; name: string; }
@@ -25,6 +24,7 @@ export interface User {
   province_name?: string;
   regency_name?: string;
   pesisir?: string;
+  token?: string;
 }
 
 interface LoginCredentials {
@@ -57,7 +57,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// --- MOCK DATA FALLBACK (Hanya untuk Dropdown Wilayah) ---
+// --- MOCK DATA FALLBACK ---
 const MOCK_PROVINCES: Province[] = [
   { id: '1', name: 'Jawa Barat' },
   { id: '2', name: 'Jawa Tengah' },
@@ -65,66 +65,28 @@ const MOCK_PROVINCES: Province[] = [
   { id: '4', name: 'DI Yogyakarta' },
 ];
 
-const MOCK_REGENCIES: Regency[] = [
-  { id: '1', name: 'Kota Bandung' },
-  { id: '2', name: 'Kota Semarang' },
-  { id: '3', name: 'Kota Surabaya' },
-  { id: '4', name: 'Kota Yogyakarta' },
-];
-
-const MOCK_JENIS_DLHS: JenisDlh[] = [
-  { id: 1, name: 'Kabupaten/Kota Kecil' },
-  { id: 2, name: 'Kabupaten/Kota Sedang' },
-  { id: 3, name: 'Kabupaten/Kota Besar' },
-];
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const [isInitialized, setIsInitialized] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  
-  // Start with null for both server and client (prevents hydration mismatch)
   const [user, setUser] = useState<User | null>(null);
-  
   const [provinces, setProvinces] = useState<Province[]>([]);
-  const [regencies, setRegencies] = useState<Regency[]>([]);
-  const [jenisDlhs, setJenisDlhs] = useState<JenisDlh[]>([]);
+  const [regencies] = useState<Regency[]>([]); // setRegencies dihapus karena belum digunakan (Fix Error 1)
+  const [jenisDlhs] = useState<JenisDlh[]>([]); // setJenisDlhs dihapus karena belum digunakan (Fix Error 2)
 
-  // Update user state and cache
-  const updateUser = (userData: User | null) => {
-    setUser(userData);
-    if (userData) {
-      localStorage.setItem('user_data', JSON.stringify(userData));
-    } else {
-      localStorage.removeItem('user_data');
-    }
-  };
-
-  // Load cached user immediately after mount (client-side only)
   useEffect(() => {
     setIsMounted(true);
     const token = localStorage.getItem('auth_token');
     const cached = localStorage.getItem('user_data');
     
-    console.log('🔍 AUTH CONTEXT MOUNT CHECK:');
-    console.log('Token:', token ? 'EXISTS' : 'MISSING');
-    console.log('Cached user:', cached ? 'EXISTS' : 'MISSING');
-    
-    // Kalau ada token & cached user, langsung load aja
-    // Gak perlu fetch /api/user - token udah otomatis attach di setiap request
     if (token && cached) {
       try {
         const userData = JSON.parse(cached);
-        console.log('✅ Loaded user from cache:', userData.email, userData.role?.name);
         setUser(userData);
-      } catch (e) {
-        // Kalau gagal parse, clear cache rusak
-        console.error('❌ Failed to parse cached user:', e);
+      } catch { // Variabel 'e' dihapus karena tidak digunakan (Fix Error 3)
         localStorage.removeItem('user_data');
         localStorage.removeItem('auth_token');
       }
-    } else {
-      console.log('⚠️ No token or cached user found');
     }
   }, []);
 
@@ -133,19 +95,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     const initAuth = async () => {
       try {
-        // Fetch dropdown data in parallel (non-blocking)
-        // Note: provinces diload oleh page yang membutuhkan (pusdatin dashboard)
-        Promise.allSettled([
-          axios.get('/api/wilayah/provinces').then(res => setProvinces((res.data.data || res.data) as Province[])),
-        ]).then(([provincesResult]) => {
-          // Use mock data only for dropdowns if API fails
-          if (process.env.NODE_ENV === 'development') {
-            if (provincesResult.status === 'rejected') setProvinces(MOCK_PROVINCES);
-          }
-        });
-
-      } catch (error: unknown) {
-        console.error("Auth initialization error:", error);
+        const provincesRes = await axios.get('/api/wilayah/provinces');
+        setProvinces((provincesRes.data.data || provincesRes.data) as Province[]);
+      } catch { // Variabel 'error' dihapus karena tidak digunakan (Fix Error 4)
+        if (process.env.NODE_ENV === 'development') setProvinces(MOCK_PROVINCES);
       } finally {
         setIsInitialized(true);
       }
@@ -154,76 +107,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     initAuth();
   }, [isInitialized, isMounted]);
 
-  const register = async (data: RegisterData): Promise<void> => {
-    try {
-      const response = await axios.post('/api/auth/register', data);
-      
-      // Login otomatis setelah register berhasil
-      const token = response.data.token;
-      localStorage.setItem('auth_token', token);
-      updateUser(response.data.user);
-      
-      if (response.data.user?.role?.name) {
-        const roleName = response.data.user.role.name.toLowerCase();
-        if (roleName === 'admin') router.push('/admin-dashboard');
-        else if (roleName === 'pusdatin') router.push('/pusdatin-dashboard');
-        else if (roleName === 'dlh') router.push('/dlh-dashboard');
-        else router.push('/');
-      }
-    } catch (error: unknown) {
-      console.error("Register failed:", error);
-      throw error;
-    }
+  const login = async (credentials: LoginCredentials): Promise<void> => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
+    
+    const response = await axios.post('/api/login', credentials);
+    const userData = response.data.user;
+    const token = userData.token;
+    
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('user_data', JSON.stringify(userData));
+    setUser(userData);
+
+    const roleName = userData?.role?.name?.toLowerCase();
+    if (roleName === 'admin') router.push('/admin-dashboard');
+    else if (roleName === 'pusdatin') router.push('/pusdatin-dashboard');
+    else if (roleName === 'provinsi' || roleName === 'kabupaten/kota') router.push('/dlh-dashboard');
+    else router.push('/');
   };
 
-  const login = async (credentials: LoginCredentials): Promise<void> => {
-    try {
-      // PENTING: Clear localStorage dulu untuk mencegah cache user lama
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user_data');
-      
-      const response = await axios.post('/api/login', {
-        email: credentials.email,
-        password: credentials.password,
-      });
-      
-      // SIMPAN TOKEN & USER DATA
-      const token = response.data.user.token;
-      const userData = response.data.user;
-      
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('user_data', JSON.stringify(userData));
-      setUser(userData);
-
-      // Redirect berdasarkan role
-      const roleName = userData?.role?.name?.toLowerCase();
-      console.log('🔐 Login successful, role:', roleName);
-      console.log('📦 User data saved:', userData);
-      
-      if (roleName === 'admin') {
-        router.push('/admin-dashboard');
-      } else if (roleName === 'pusdatin') {
-        router.push('/pusdatin-dashboard');
-      } else if (roleName === 'provinsi' || roleName === 'kabupaten/kota') {
-        router.push('/dlh-dashboard');
-      } else {
-        console.warn('⚠️ Unknown role:', roleName);
-        router.push('/');
-      }
-    } catch (error: unknown) {
-      console.error("Login failed:", error);
-      // Clear jika login gagal
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user_data');
-      throw error;
-    }
+  const register = async (data: RegisterData): Promise<void> => {
+    const response = await axios.post('/api/auth/register', data);
+    const token = response.data.token;
+    localStorage.setItem('auth_token', token);
+    const userData = response.data.user;
+    localStorage.setItem('user_data', JSON.stringify(userData));
+    setUser(userData);
+    router.push('/');
   };
 
   const logout = async (): Promise<void> => {
     try {
       await axios.post('/api/logout');
-    } catch (error: unknown) {
-      console.error("Logout error (ignoring):", error);
     } finally {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_data');
@@ -232,8 +147,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Tidak perlu blocking loading screen di sini - biarkan children render
-  // Loading state akan dihandle oleh masing-masing komponen yang membutuhkan
   return (
     <AuthContext.Provider value={{ user, provinces, regencies, jenisDlhs, login, register, logout }}> 
       {children}
@@ -243,8 +156,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthContext');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthContext');
   return context;
 };
